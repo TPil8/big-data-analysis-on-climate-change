@@ -1,0 +1,577 @@
+---
+title: "Modeling"
+output:
+  pdf_document: 
+    # To add the table of content
+    toc: true
+    number_sections: true
+---
+
+```{r setup, echo = F, message=FALSE, results='hide'}
+library(tseries)
+library(ggplot2)
+library(forecast) 
+library(imputeTS)
+library(tidyverse)
+library(caret)
+library(car)
+library(texreg)
+library(AICcmodavg)
+library(flexmix)
+library(knitr)
+```
+
+# Data gathering 
+
+## Read climate anomaly data
+This will be the dependent variable
+```{r}
+df_temp_anomaly <- read.csv("data/NASA/global_temperature_anomaly.csv", 
+                            sep = ",", header = TRUE, skip = 2)
+
+# Set the year as rownames and delete from first colum
+year_names <- df_temp_anomaly[, 1]
+df_temp_anomaly[, 1] <- NULL 
+rownames(df_temp_anomaly) <- year_names
+```
+
+## Read possible drivers of climate change, i.e. independent variabels
+Considered as independent variables different drivers such as greenhouse gas emissions, energy, transport, industrial processes, and waste
+```{r}
+df_climate_raw <- read.csv("data/Eurostat/df_climate.csv", sep = ",", header = TRUE)
+
+# Set the year as rownames and delete from first colum
+year_names <- df_climate_raw [, 1]
+df_climate_raw[, 1] <- NULL 
+rownames(df_climate_raw) <- year_names
+```
+
+# Preparation of Dataset for the Model
+
+Add climate anomaly data to drivers data, i.e. in one dataset both dependent and independent variables
+```{r}
+df_climate_raw <- merge(df_climate_raw, df_temp_anomaly, by="row.names", all=TRUE)
+names(df_climate_raw)[names(df_climate_raw) == 'Row.names'] <- 'Year'
+
+# Do not consider lowess smothing (just for visualization purposes)
+df_climate_raw$Lowess.5. <- NULL
+```
+
+
+## Keep interesting variable
+Realize that for some variable there are a lot of missing value. Only keep value from 1995 onwards.
+Data since 1995 has been considered because most of the dataset from Eurostat has 1995 as the first data collection date. Note that not all variables are starting from that date, as an example some variables start from 2000
+```{r}
+# Keep value from 1995 onwards
+mask <- df_climate_raw$Year > 1994
+df_climate <- df_climate_raw[mask, ]
+
+# Set year as rownames
+# Set the year as rownames and delete from first colum
+year_names <- df_climate[, 1]
+df_climate[, 1] <- NULL 
+rownames(df_climate) <- year_names
+
+# Look at two columns and see that they have different starting date
+kable(df_climate[2:9, 1:2])
+```
+
+## Inptutation of time series missing data
+
+In the presence of missing data, most statistical packages use listwise deletion, which removes any row that contains a missing value from the analysis.
+
+
+```{r}
+# Imputation by Kalman Smoothing and State Space Models
+df_inp <- data.frame(sapply(df_climate, function(x) na_kalman(x)))
+```
+
+## Correlation analysis
+Correlations analysis among the different variables was conducted. All the variables with correlations higher than 0.9 were rejected in order to avoid multicollinearity problems
+```{r}
+df_cor <- cor(df_inp)
+```
+
+### Eliminate highly correlated variable, i.e correlation higher than 0.9
+```{r}
+# Set the upper triangle equal to zero
+df_cor[upper.tri(df_cor)] <- 0
+diag(df_cor) <- 0
+
+data_no_corr <- df_inp[, !apply(df_cor, 2, function(x) any(abs(x) > 0.90, na.rm = TRUE))]
+```
+
+# Modeling
+
+## Base model
+```{r}
+lm_0 <- lm(No_Smoothing ~ ., data = data_no_corr)
+#summary(lm_0)
+#texreg(lm_0)
+```
+
+### Base model info and fit
+
+\begin{table}[ht]
+\begin{center}
+\begin{tabular}{l c}
+\hline
+Dependent variable             &  Average annual yearly anomaly temperature \(No\_smoothing\) \\
+Number of observation          & $26$     \\  
+Type                           & OLS linear regression      \\
+\hline
+Residual standard error:       & $0.0449$ on $5$ degrees of freedom     \\
+Multiple R$^2$                 & $0.989$      \\
+Adjusted R$^2$                 & $0.9452$      \\
+F-statistic                    & $22.56$ on $20$ and $5$ DF        \\
+F-statistic p-value            & $0.001329$        \\
+\hline
+\end{tabular}
+\end{center}%
+\end{table}
+
+### Base model coefficients
+
+\begin{table}[ht]
+\begin{center}
+\begin{tabular}{l l l l }
+\hline
+ & Estimate & Standard Error & Pr(>|t|) \\
+\hline
+(Intercept)                                     & $22.20$ & $8.185$ & $0.04214$ *  \\
+sts\_copr\_a\_PROD\_F\_CC1\_CA\_I10\_EU28       & $-5.543e-02$ &  $2.313e-02$ & $0.06187$ . \\
+sts\_copr\_a\_PROD\_F\_CC2\_CA\_I10\_EU28       & $4.587e-02$ & $2.812e-02$ & $0.16379$         \\
+sts\_inpr\_a\_PROD\_C\_CA\_I10\_EU28            & $6.138e-02$ & $2.190e-02$ & $0.03789$ *  \\
+sts\_inpr\_a\_PROD\_D\_CA\_I10\_EU28            & $-6.904e-02$ &  $1.782e-02$ & $0.01170$ *  \\
+env\_wasmun\_GEN\_KG\_HAB\_EU28                 & $-6.972e-03$ &  $1.014e-02$ & $0.52215$     \\
+env\_wasmun\_TRT\_KG\_HAB\_EU28                 & $-3.643e-03$ &  $1.186e-02$ & $0.77109$     \\
+tai08\_CO2\_PC\_CRF3\_EU28                      & $1.796e+00$ & $ 1.118e+00$ & $0.16901$       \\
+tran\_hv\_psmod\_PC\_BUS\_TOT\_EU28             & $-6.441e-02$ &  $2.843e-01$ & $0.82975$     \\
+tran\_hv\_psmod\_PC\_TRN\_BUS\_TOT\_AVD\_EU28   & $-3.288e-01$ &  $2.370e-01$ & $0.22404$     \\
+tran\_hv\_pstra\_I10\_EU28                      & $-3.241e-02$ &  $8.067e-02$ & $0.70451$     \\
+ttr00005\_TOT\_LOADED\_THS\_T\_EU28             & $-5.819e-07$ &  $2.572e-07$ & $0.07314$ .      \\
+t2020\_rk200\_TOTAL\_KTOE\_FC\_OTH\_HH\_E\_EU28 & $2.564e-06$ &  $2.545e-06$ & $0.35983$    \\
+ten00123\_FC\_E\_C0000X0350.0370\_KTOE\_EU28    & $-1.362e-04$ &  $6.230e-05$ & $0.08042$ .      \\
+ten00123\_FC\_E\_C0350.0370\_KTOE\_EU28         & $6.108e-04$ &  $2.054e-04$ & $0.03102$ *   \\
+ten00123\_FC\_E\_E7000\_KTOE\_EU28              & $-1.197e-04$ &  $4.119e-05$ & $0.03356$ *  \\
+ten00123\_FC\_E\_H8000\_KTOE\_EU28              & $2.348e-04$ & $5.517e-05$ & $0.00804$ ** \\
+ten00123\_FC\_E\_O4000XBIO\_KTOE\_EU28          & $4.972e-05$ & $2.732e-05$ & $0.12841$       \\
+ten00123\_FC\_E\_S2000\_KTOE\_EU28              & $2.711e-03$ & $4.253e-03$ & $0.55196$        \\
+ten00123\_FC\_E\_TOTAL\_KTOE\_EU28              & $-1.374e-06$ & $4.934e-06$ &  $0.79180$       \\
+ten00123\_FC\_E\_W6100\_6220\_KTOE\_EU28        & $2.168e-04$ & $1.997e-04$ & $0.32715$      \\
+\hline
+\multicolumn{2}{l}{\scriptsize{$^{***}p<0.001$; $^{**}p<0.01$; $^{*}p<0.05$; $^{.}p<0.1$}}
+\end{tabular}%
+\end{center}
+\end{table}
+
+## Diagnostics of base model
+
+### Multicollinearity (vif should be <10)
+```{r}
+kable(vif(lm_0), col.names = c("VIF"))
+```
+Since each value is higher than 10 there is a multicollinearity issue, meaning that significant test for coefficient would be off.
+
+### Normality of residuals
+```{r}
+#shapiro.test(lm_0$residuals)
+```
+
+\begin{table}[ht]
+\begin{center}
+\textbf{Shapiro-Wilk Normality Test} \\
+\text{data:  base model residuals} \\
+\vspace{0.5cm}
+\begin{tabular}{l c}
+\hline
+W             &  $0.91189$ \\
+p-value          & $0.02913$     \\  
+\hline
+\end{tabular}
+\end{center}%
+\end{table}
+
+The residuals are not normally distributed since p-value is lower than 0.05
+
+```{r}
+qqnorm(scale(lm_0$residuals)) 
+qqline(scale(lm_0$residuals))
+```
+As it is possible to see from the graph theoretical quanties and sample quanties do not match.
+
+### Autocorrelation
+```{r}
+#durbinWatsonTest(lm_0)
+```
+\begin{table}[ht]
+\begin{center}
+\textbf{Durbin-Watson Test} \\
+\text{ Alternative hypothesis: rho != 0} \\
+\vspace{0.5cm}
+\begin{tabular}{l l l l }
+\hline
+log & Autocorrelation & D-W Statistic & p-value \\
+\hline
+$1$    & $-0.4822647$ & $2.937878$ & $0.482$  \\
+\hline
+\end{tabular}%
+\end{center}
+\end{table}
+
+No autocorrelation since p-value > 0.05, significant test would not be impacted as we suspect the variance in error term will be lower
+
+### Heteroskedasticity - Homoskedasticity - Or in Lay Statistician’s Terms: Non-Constant Variance
+```{r}
+#ncvTest(lm_0)
+```
+\begin{table}[ht]
+\begin{center}
+\textbf{Non-constant Variance Score Test} \\
+\text{Variance formula: fitted values} \\
+\vspace{0.5cm}
+\begin{tabular}{l c}
+\hline
+Chisquare            &  $7.343481$ \\
+Df   & $1$\\
+p-value          & $0.02913$     \\  
+\hline
+\end{tabular}
+\end{center}%
+\end{table}
+
+
+```{r}
+spreadLevelPlot(lm_0)
+```
+The model is characterized by heteroskedasticity, meaning it suffers from non constant variance and that the model is more reliable for certain values of estimated values (where variance is smaller) and less reliable for other values.
+
+# Model improvement
+
+## More imputation of missing data
+```{r}
+# Keep value from 1985 onwards
+mask <- df_climate_raw$Year > 1984
+df_climate <- df_climate_raw[mask, ]
+
+# Set year as rownames
+# Set the year as rownames and delete from first colum
+year_names <- df_climate[, 1]
+df_climate[, 1] <- NULL 
+rownames(df_climate) <- year_names
+```
+
+### Inptutation of time series missing data
+
+In the presence of missing data, most statistical packages use listwise deletion, which removes any row that contains a missing value from the analysis.
+
+```{r}
+# Imputation by Kalman Smoothing and State Space Models
+df_inp <- data.frame(sapply(df_climate, function(x) na_kalman(x)))
+```
+
+### Check correlation
+```{r}
+df_cor <- cor(df_inp)
+```
+
+### Eliminate highly correlated variable, i.e correlation higher than 0.9
+```{r}
+# Set the upper triangle equal to zero
+df_cor[upper.tri(df_cor)] <- 0
+diag(df_cor) <- 0
+
+data_no_corr <- df_inp[, !apply(df_cor, 2, function(x) any(abs(x) > 0.90, na.rm = TRUE))]
+```
+
+### Run linear regression with more data
+```{r}
+lm_1 <- lm(No_Smoothing ~ ., data = data_no_corr)
+#summary(lm_1)
+#texreg(lm_1)
+```
+
+### More sample size model info and fit
+
+\begin{table}[ht]
+\begin{center}
+\begin{tabular}{l c}
+\hline
+Dependent variable             &  Average annual yearly anomaly temperature \(No\_smoothing\) \\
+Number of observation          & $36$     \\  
+Type                           & OLS linear regression (More sample size)      \\
+\hline
+Residual standard error:       & $0.08998$ on $20$ degrees of freedom     \\
+Multiple R$^2$                 & $0.9196$      \\
+Adjusted R$^2$                 & $0.8593$      \\
+F-statistic                    & $15.25$ on $15$ and $20$ DF        \\
+F-statistic p-value            & $8.686e-08$        \\
+\hline
+\end{tabular}%
+\end{center}
+\end{table}
+
+
+### Diagnostic
+
+#### Multicollinearity (vif should be <10)
+```{r}
+vif(lm_1)
+```
+
+#### Normality of residuals
+```{r}
+shapiro.test(lm_1$residuals)
+```
+
+```{r}
+qqnorm(scale(lm_1$residuals)) 
+qqline(scale(lm_1$residuals))
+```
+
+#### Autocorrelation
+```{r}
+durbinWatsonTest(lm_1)
+```
+
+#### Heteroskedasticity - Homoskedasticity - Or in Lay Statistician’s Terms: Non-Constant Variance
+```{r}
+ncvTest(lm_1)
+```
+```{r}
+spreadLevelPlot(lm_1)
+```
+
+## Standardization
+Apply standardization of data to see if could lead to improvement of model performance.
+Since lm_1, better than lm_0. Use dataset from lm_1 and standardize. Check correlation after standardization
+
+```{r}
+# Standardization, df_inp is the dataframe after the inputation of missing data
+df_norm <- data.frame(scale(df_inp))
+
+## Check correlation
+df_cor <- cor(df_inp)
+```
+
+### Eliminate highly correlated variable, i.e correlation higher than 0.9
+```{r}
+# Set the upper triangle equal to zero
+df_cor[upper.tri(df_cor)] <- 0
+diag(df_cor) <- 0
+
+data_no_corr <- df_norm[, !apply(df_cor, 2, function(x) any(abs(x) > 0.90, na.rm = TRUE))]
+```
+
+```{r}
+# Run the model
+lm_2 <- lm(No_Smoothing ~ ., data = data_no_corr)
+#texreg(lm_2)
+#summary(lm_2)
+```
+
+### Standardize model info and fit
+
+\begin{table}[ht]
+\begin{center}
+\begin{tabular}{l c}
+\hline
+Dependent variable             &  Average annual yearly anomaly temperature \(No\_smoothing\) \\
+Number of observation          & $36$     \\  
+Type                           & OLS linear regression (Standardize)      \\
+\hline
+Residual standard error:       & $0.3751$ on $20$ degrees of freedom     \\
+Multiple R$^2$                 & $0.9196$      \\
+Adjusted R$^2$                 & $0.8593$      \\
+F-statistic                    & $15.25$ on $15$ and $20$ DF        \\
+F-statistic p-value            & $8.686e-08$        \\
+\hline
+\end{tabular}%
+\end{center}
+\end{table}
+
+
+## Stepwise regression
+```{r}
+# Define intercept-only mode, df_inp is the dataframe after the inputation of missing data
+intercept_only <- lm(No_Smoothing ~ 1, data = df_inp)
+
+# Define model with all predictors
+all <- lm(No_Smoothing ~ ., data = df_inp)
+
+# Perform forward stepwise regression
+lm_3 <- step(intercept_only, direction='forward', scope=formula(all), trace=0)
+
+# View results of forward stepwise regression
+#lm_3$anova
+
+# View final model
+#lm_3$coefficients
+
+# View model result
+#texreg(lm_3)
+#summary(lm_3)
+```
+
+### Stepwise model info and fit
+
+\begin{table}[ht]
+\begin{center}
+\begin{tabular}{l c}
+\hline
+Dependent variable             &  Average annual yearly anomaly temperature \(No\_smoothing\) \\
+Number of observation          & $36$     \\  
+Type                           & OLS linear regression (Stepwise regression)      \\
+\hline
+Residual standard error:       & $0.08111$ on $33$ degrees of freedom     \\
+Multiple R$^2$                 & $0.8922$      \\
+Adjusted R$^2$                 & $0.8857$      \\
+F-statistic                    & $136.6$ on $2$ and $33$ DF        \\
+F-statistic p-value            & $2.2e-16$        \\
+\hline
+\end{tabular}%
+\end{center}
+\end{table}
+
+### Stepwise regression model coefficients
+
+\begin{table}[ht]
+\begin{center}
+\begin{tabular}{l l l l }
+\hline
+ & Estimate & Standard Error & Pr(>|t|) \\
+\hline
+(Intercept)                                     & $-0.727173$ & $0.145886$ & $1.93e-05$ ***  \\
+sts\_inpr\_a\_PROD\_C10\_CA\_I10\_EU28       & $0.016324$ &  $0.001253$ & $1.46e-14$ *** \\
+ten00123\_FC\_E\_S2000\_KTOE\_EU28       & $-0.005231$ & $0.001384$ & $0.000628$   ***   \\
+\hline
+\multicolumn{2}{l}{\scriptsize{$^{***}p<0.001$; $^{**}p<0.01$; $^{*}p<0.05$; $^{.}p<0.1$}}
+\end{tabular}%
+\end{center}
+\end{table}
+
+
+## Diagnostic of stepwise regression
+
+### Multicollinearity (vif should be <10)
+```{r}
+#vif(lm_3)
+```
+\begin{table}[ht]
+\begin{center}
+\begin{tabular}{l l l l }
+\hline
+ & VIF  \\
+\hline
+sts\_inpr\_a\_PROD\_C10\_CA\_I10\_EU28       & $1.212378$\\
+ten00123\_FC\_E\_S2000\_KTOE\_EU28       & $1.212378$  \\
+\hline
+\end{tabular}%
+\end{center}
+\end{table}
+The model is not experiencing multicollinearity issues, since the VIF value of the variables is significantly lower than 10. This means there is no sizable correlations between multiple variables within the model.
+
+### Normality of residuals
+```{r}
+#shapiro.test(lm_3$residuals)
+```
+\begin{table}[ht]
+\begin{center}
+\textbf{Shapiro-Wilk Normality Test} \\
+\text{data:  Stepwise regression residuals} \\
+\vspace{0.5cm}
+\begin{tabular}{l c}
+\hline
+W             &  $0.98429$ \\
+p-value          & $0.8779$     \\  
+\hline
+\end{tabular}
+\end{center}%
+\end{table}
+
+Given that the p-value=0.87 is considerably high (higher than 0.05) the residuals are normally distributed.
+
+```{r}
+qqnorm(scale(lm_3$residuals)) 
+qqline(scale(lm_3$residuals))
+```
+
+### Autocorrelation
+```{r}
+#durbinWatsonTest(lm_3)
+```
+\begin{table}[ht]
+\begin{center}
+\textbf{Durbin-Watson Test} \\
+\text{ Alternative hypothesis: rho != 0} \\
+\vspace{0.5cm}
+\begin{tabular}{l l l l }
+\hline
+log & Autocorrelation & D-W Statistic & p-value \\
+\hline
+$1$    & $ 0.1164049$ & $1.639169$ & $ 0.118$  \\
+\hline
+\end{tabular}%
+\end{center}
+\end{table}
+
+Since the p-value is higher than 0.05 there is no suspect of autocorrelation.
+
+### Heteroskedasticity - Homoskedasticity - Or in Lay Statistician’s Terms: Non-Constant Variance
+```{r}
+ncvTest(lm_3)
+```
+
+\begin{table}[ht]
+\begin{center}
+\textbf{Non-constant Variance Score Test} \\
+\text{Variance formula: fitted values} \\
+\vspace{0.5cm}
+\begin{tabular}{l c}
+\hline
+Chisquare            &  $5.036168$ \\
+Df   & $1$\\
+p-value          & $ 0.024823$     \\  
+\hline
+\end{tabular}
+\end{center}%
+\end{table}
+
+Since the p-value is high (higher than 0.05), the null hypothesis of homoscedasticity is not rejected. This means that the model does not suffer of non-constant variance.
+
+```{r}
+spreadLevelPlot(lm_3)
+```
+
+
+# Model comparison 
+
+Relative model performance metrics, such as Akaike Information Criterion (AIC) and Bayesian Information Criterion (BIC),  are used to compare time series models. Those metrics are the best approach when dealing with small data and time series. When data is recent and splitting into train, test and validation is not the optimal way to compare models (https://towardsdatascience.com/introduction-to-aic-akaike-information-criterion-9c9ba1c96ced).
+
+## AIC
+```{r}
+models <- list(lm_3, lm_1, lm_2)
+models_names <- c("stepwise_regression", "more_sample_size", "standardize")
+               
+AICs <- aictab(cand.set = models, modnames = models_names)
+AICs
+```
+
+
+## Using BIC
+```{r}
+bic_1 <- BIC(lm_1)
+bic_2 <- BIC(lm_2)
+bic_3 <- BIC(lm_3)
+
+BICs <- c(bic_3, bic_1, bic_2)
+```
+
+## Nice table for model comparison
+
+```{r}
+df_model_comparison <- data.frame(models_names, AICs$K, AICs$AICc, BICs)
+colnames(df_model_comparison) <- c("Model", "# Parameters", "AIC", "BIC")
+
+kable(df_model_comparison)
+```

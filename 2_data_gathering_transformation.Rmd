@@ -1,0 +1,808 @@
+---
+title: "Data gathering and transformation"
+output:
+  pdf_document: 
+    # To add the table of content
+    toc: true
+    toc_depth: 3
+    number_sections: true
+---
+
+# Data Pre-Processing
+
+## Gathering the data and merging 
+
+## Greenhouse Gas emission
+### Greenhouse gas emissions by source sector (source: EEA) (sdg_13_10)
+```{r}
+# Keep data regarding all 28 countries in Europe
+to_keep <- c("EU28")
+name_df<- "sdg_13_10_"
+# Read data set
+library(data.table)
+df = fread("data/Eurostat/Greenhouse/sdg_13_10.tsv.gz", header = TRUE, sep2 = c(",","\t","|",";",":",""))
+
+# Assign as rows name the content of the first column 
+var_names <- t(df[, 1])
+df[, 1] <- NULL 
+rownames(df) <- var_names
+
+# Only keep data of all the 28 European country, use data aggregation calculated from Eurostat
+mask <- rownames(df) %like% to_keep
+df <- df[mask, ]
+
+# Transpose column and rows, we want year in the row and variables in the columns
+# Keep name of the columns, which are the year that will be set as row
+year_names <- colnames(df)
+df <- data.frame(t(df))
+
+# EXTRA FOR THIS DATASET
+# Eliminate character e, which stand for estimated. We trust Eurostat!
+df <- data.frame(sapply(df, function(x) gsub("b", "",  x)))
+df <- data.frame(sapply(df, function(x) gsub("ep", "",  x)))
+
+# Transform everything to numeric
+df <- data.frame(sapply(df, as.numeric))
+
+# Set correct name to the variable (column) in consideration and add the name of the dataset used
+var_names <- var_names[, mask]
+colnames(df) <- paste(name_df, var_names)
+rownames(df) <- year_names
+
+df_sdg_13_10 <- df
+```
+
+### Greenhouse gas emissions intensity of energy consumption (sdg_13_20)
+```{r}
+# Keep data regarding all 28 countries in Europe
+to_keep <- c("EU28")
+name_df<- "sdg_13_20_"
+# Read data set
+library(data.table)
+df = fread("data/Eurostat/Greenhouse/sdg_13_20.tsv", header = TRUE, sep2 = c(",","\t","|",";",":",""))
+
+# Assign as rows name the content of the first column 
+var_names <- t(df[, 1])
+df[, 1] <- NULL 
+rownames(df) <- var_names
+
+# Only keep data of all the 28 European country, use data aggregation calculated from Eurostat
+mask <- rownames(df) %like% to_keep
+df <- df[mask, ]
+
+# Transpose column and rows, we want year in the row and variables in the columns
+# Keep name of the columns, which are the year that will be set as row
+year_names <- colnames(df)
+df <- data.frame(t(df))
+
+# Transform everything to numeric
+df <- data.frame(sapply(df, as.numeric))
+
+# Set correct name to the variable (column) in consideration and add the name of the dataset used
+var_names <- var_names[, mask]
+colnames(df) <- paste(name_df, var_names)
+rownames(df) <- year_names
+
+
+df_sdg_13_20 <- df
+```
+
+### Average CO2 emission per km from new pssangers cars (sdg_12_30)
+```{r}
+# Keep data regarding all 28 countries in Europe
+to_keep <- c("EU27_2020")
+name_df<- "sdg_12_30_"
+# Read data set
+library(data.table)
+df = fread("data/Eurostat/Greenhouse/sdg_12_30.tsv", header = TRUE, sep2 = c(",","\t","|",";",":",""))
+
+# Assign as rows name the content of the first column 
+var_names <- t(df[, 1])
+df[, 1] <- NULL 
+rownames(df) <- var_names
+
+# Only keep data of all the 28 European country, use data aggregation calculated from Eurostat
+mask <- rownames(df) %like% to_keep
+df <- df[mask, ]
+
+# Transpose column and rows, we want year in the row and variables in the columns
+# Keep name of the columns, which are the year that will be set as row
+year_names <- colnames(df)
+df <- data.frame(t(df))
+
+# EXTRA FOR THIS DATASET
+# Eliminate character e, which stand for estimated. We trust Eurostat!
+df <- data.frame(sapply(df, function(x) gsub("e", "",  x)))
+
+# Transform everything to numeric
+df <- data.frame(sapply(df, as.numeric))
+
+# Set correct name to the variable (column) in consideration and add the name of the dataset used
+var_names <- var_names[, mask]
+colnames(df) <- "sdg_12_30_C02KM_EU28"
+rownames(df) <- year_names
+
+df_sdg_12_30 <- df
+```
+
+### Greenhouse gas emission from agriculture (tai08)
+```{r}
+# Keep data regarding all 28 countries in Europe
+to_keep <- c("EU28")
+name_df<- "tai08_"
+# Read data set
+library(data.table)
+df = fread("data/Eurostat/Greenhouse/tai08.tsv", header = TRUE, sep2 = c(",","\t","|",";",":",""))
+
+# Assign as rows name the content of the first column 
+var_names <- t(df[, 1])
+df[, 1] <- NULL 
+rownames(df) <- var_names
+
+# Only keep data of all the 28 European country, use data aggregation calculated from Eurostat
+mask <- rownames(df) %like% to_keep
+df <- df[mask, ]
+
+# Transpose column and rows, we want year in the row and variables in the columns
+# Keep name of the columns, which are the year that will be set as row
+year_names <- colnames(df)
+df <- data.frame(t(df))
+
+# Transform everything to numeric
+df <- data.frame(sapply(df, as.numeric))
+
+# Set correct name to the variable (column) in consideration and add the name of the dataset used
+var_names <- var_names[, mask]
+colnames(df) <- paste(name_df, var_names)
+rownames(df) <- year_names
+
+df_tai08 <- df
+```
+
+### Merge all greenhouse gas emissions data into one dataframe
+```{r}
+df_gas <- merge(df_sdg_13_10, df_sdg_13_20, by="row.names", all=TRUE)
+
+# Set the year as rownames and delete from first colum
+year_names <- df_gas[, 1]
+df_gas[, 1] <- NULL 
+rownames(df_gas) <- year_names
+
+df_gas <- merge(df_gas, df_sdg_12_30, by="row.names", all=TRUE)
+
+# Set the year as rownames and delete from first colum
+year_names <- df_gas[, 1]
+df_gas[, 1] <- NULL 
+rownames(df_gas) <- year_names
+
+df_gas <- merge(df_gas, df_tai08, by="row.names", all=TRUE)
+
+# Set the year as rownames and delete from first colum
+year_names <- df_gas[, 1]
+df_gas[, 1] <- NULL 
+rownames(df_gas) <- year_names
+```
+
+## Drivers - Transport
+
+### Air transport of passengers by country (yearly data) (ttr00012)
+```{r}
+# Keep data regarding all 28 countries in Europe
+to_keep <- c("EU28")
+name_df<- "ttr00012_"
+
+# Read data set
+library(data.table)
+df = fread("data/Eurostat/Transport/ttr00012.tsv.gz", header = TRUE, sep2 = c(",","\t","|",";",":",""))
+
+# Assign first column to row names and delete it
+var_names <- t(df[, 1])
+df[, 1] <- NULL 
+rownames(df) <- var_names
+
+# Only keep data of all the 28 European country, use data aggregation from Eurostat
+mask <- rownames(df) %like% to_keep
+df <- df[mask, ]
+
+# Transpose column and rows, we want year in the row and variables in the columns
+# Keep name of the columns, which are the year that will be set as row
+year_names <- colnames(df)
+df <- data.frame(t(df))
+
+# Transform everything to numeric
+df <- data.frame(sapply(df, as.numeric))
+
+# Set correct name to the variable (column) in consideration and add the name of the dataset used
+var_names <- var_names[, mask]
+colnames(df) <- paste(name_df, var_names)
+rownames(df) <- year_names
+
+df_ttr00012 <- df
+```
+### Air transport of goods by country (yearly data) (ttr00011)	
+```{r}
+# Keep data regarding all 28 countries in Europe
+to_keep <- c("EU28")
+name_df<- "ttr00011_"
+
+# Read data set
+library(data.table)
+df = fread("data/Eurostat/Transport/ttr00011.tsv.gz", header = TRUE, sep2 = c(",","\t","|",";",":",""))
+
+# Assign first column to row names and delete it
+var_names <- t(df[, 1])
+df[, 1] <- NULL 
+rownames(df) <- var_names
+
+# Only keep data of all the 28 European country, use data aggregation from Eurostat
+mask <- rownames(df) %like% to_keep
+df <- df[mask, ]
+
+# Transpose column and rows, we want year in the row and variables in the columns
+# Keep name of the columns, which are the year that will be set as row
+year_names <- colnames(df)
+df <- data.frame(t(df))
+
+# Transform everything to numeric
+df <- data.frame(sapply(df, as.numeric))
+
+# Set correct name to the variable (column) in consideration and add the name of the dataset used
+var_names <- var_names[, mask]
+colnames(df) <- paste(name_df, var_names)
+rownames(df) <- year_names
+
+df_ttr00011 <- df
+```
+### Sea transport of goods (ttr00009)
+```{r}
+# Keep data regarding all 28 countries in Europe
+to_keep <- c("EU28")
+name_df<- "ttr00009_"
+
+# Read data set
+library(data.table)
+df = fread("data/Eurostat/Transport/ttr00009.tsv.gz", header = TRUE, sep2 = c(",","\t","|",";",":",""))
+
+# Assign first column to row names and delete it
+var_names <- t(df[, 1])
+df[, 1] <- NULL 
+rownames(df) <- var_names
+
+# Only keep data of all the 28 European country, use data aggregation from Eurostat
+mask <- rownames(df) %like% to_keep
+df <- df[mask, ]
+
+# Transpose column and rows, we want year in the row and variables in the columns
+# Keep name of the columns, which are the year that will be set as row
+year_names <- colnames(df)
+df <- data.frame(t(df))
+
+# Transform everything to numeric
+df <- data.frame(sapply(df, as.numeric))
+
+# Set correct name to the variable (column) in consideration and add the name of the dataset used
+var_names <- var_names[, mask]
+colnames(df) <- paste(name_df, var_names)
+rownames(df) <- year_names
+
+df_ttr00009 <- df
+```
+
+### Goods transport by road (ttr00005)	
+```{r}
+# Keep data regarding all 28 countries in Europe
+to_keep <- c("EU28")
+name_df<- "ttr00005_"
+
+# Read data set
+library(data.table)
+df = fread("data/Eurostat/Transport/ttr00005.tsv.gz", header = TRUE, sep2 = c(",","\t","|",";",":",""))
+
+# Assign first column to row names and delete it
+var_names <- t(df[, 1])
+df[, 1] <- NULL 
+rownames(df) <- var_names
+
+# Only keep data of all the 28 European country, use data aggregation from Eurostat
+mask <- rownames(df) %like% to_keep
+df <- df[mask, ]
+
+# Transpose column and rows, we want year in the row and variables in the columns
+# Keep name of the columns, which are the year that will be set as row
+year_names <- colnames(df)
+df <- data.frame(t(df))
+
+# Transform everything to numeric
+df <- data.frame(sapply(df, as.numeric))
+
+# Set correct name to the variable (column) in consideration and add the name of the dataset used
+var_names <- var_names[, mask]
+colnames(df) <- paste(name_df, var_names)
+rownames(df) <- year_names
+
+df_ttr00005 <- df
+```
+
+### Volume of freight transport relative to GDP (tran_hv_frtra)
+```{r}
+# Keep data regarding all 28 countries in Europe
+to_keep <- c("EU28")
+name_df<- "tran_hv_frtra_"
+
+# Read data set
+library(data.table)
+df = fread("data/Eurostat/Transport/tran_hv_frtra.tsv.gz", header = TRUE, sep2 = c(",","\t","|",";",":",""))
+
+# Assign first column to row names and delete it
+var_names <- t(df[, 1])
+df[, 1] <- NULL 
+rownames(df) <- var_names
+
+# Only keep data of all the 28 European country, use data aggregation from Eurostat
+mask <- rownames(df) %like% to_keep
+df <- df[mask, ]
+
+# Keep name of the columns, which are the year that will be set as row
+year_names <- colnames(df)
+
+# Transpose column and rows, we want year in the row and variables in the columns
+df <- data.frame(t(df))
+
+# EXTRA FOR THIS DATASET
+# Eliminate character e, which stand for estimated. We trust Eurostat!
+df <- data.frame(sapply(df, function(x) gsub("e", "",  x)))
+df <- data.frame(sapply(df, function(x) gsub("ep", "",  x)))
+df <- data.frame(sapply(df, function(x) gsub("p", "",  x)))
+
+# Transform everything to numeric
+df <- data.frame(sapply(df, as.numeric))
+
+# Set correct name to the variable (column) in consideration and add the name of the dataset used
+var_names <- var_names[, mask]
+colnames(df) <- paste(name_df, var_names)
+rownames(df) <- year_names
+
+df_tran_hv_frtra <- df
+```
+
+### Modal split of passenger transport (tran_hv_psmod)
+```{r}
+# Keep data regarding all 28 countries in Europe
+to_keep <- c("EU28")
+name_df<- "tran_hv_psmod_"
+
+# Read data set
+library(data.table)
+df = fread("data/Eurostat/Transport/tran_hv_psmod.tsv.gz", header = TRUE, sep2 = c(",","\t","|",";",":",""))
+
+# Assign first column to row names and delete it
+var_names <- t(df[, 1])
+df[, 1] <- NULL 
+rownames(df) <- var_names
+
+# Only keep data of all the 28 European country, use data aggregation from Eurostat
+mask <- rownames(df) %like% to_keep
+df <- df[mask, ]
+
+# Keep name of the columns, which are the year that will be set as row
+year_names <- colnames(df)
+
+# Transpose column and rows, we want year in the row and variables in the columns
+df <- data.frame(t(df))
+
+# EXTRA FOR THIS DATASET
+# Eliminate character e, which stand for estimated. We trust Eurostat!
+df <- data.frame(sapply(df, function(x) gsub("e", "",  x)))
+df <- data.frame(sapply(df, function(x) gsub("ep", "",  x)))
+df <- data.frame(sapply(df, function(x) gsub("p", "",  x)))
+
+# Transform everything to numeric
+df <- data.frame(sapply(df, as.numeric))
+
+# Set correct name to the variable (column) in consideration and add the name of the dataset used
+var_names <- var_names[, mask]
+colnames(df) <- paste(name_df, var_names)
+rownames(df) <- year_names
+
+df_tran_hv_psmod <- df
+```
+
+### Volume of passenger transport relative to GDP, index = 2010 (tran_hv_pstra)
+```{r}
+# Keep data regarding all 28 countries in Europe
+to_keep <- c("EU28")
+name_df<- "tran_hv_pstra_"
+# Read data set
+library(data.table)
+df = fread("data/Eurostat/Transport/tran_hv_pstra.tsv.gz", header = TRUE, sep2 = c(",","\t","|",";",":",""))
+
+# Assign as rows name the content of the first column 
+var_names <- t(df[, 1])
+df[, 1] <- NULL 
+rownames(df) <- var_names
+
+# Only keep data of all the 28 European country, use data aggregation calculated from Eurostat
+mask <- rownames(df) %like% to_keep
+df <- df[mask, ]
+
+# Transpose column and rows, we want year in the row and variables in the columns
+# FOR THE FUNCTION df <- data.frame(t(df))
+# Keep name of the columns, which are the year that will be set as row
+year_names <- colnames(df)
+df <- t(df) 
+
+# EXTRA FOR THIS DATASET
+# Eliminate character e, which stand for estimated. We trust Eurostat!
+df <- data.frame(sub("e", "", df, fixed = TRUE))
+df <- data.frame(sapply(df, as.numeric))
+
+# Set correct name to the variable (column) in consideration and add the name of the dataset used
+var_names <- var_names[, mask]
+colnames(df) <- paste(name_df, var_names)
+rownames(df) <- year_names
+
+df_tran_hv_pstra <- df
+```
+
+### Merge all transportation data into one dataframe
+```{r}
+df_tran <- merge(df_tran_hv_frtra, df_tran_hv_psmod, by="row.names", all=TRUE)
+
+# Set the year as rownames and delete from first colum
+year_names <- df_tran[, 1]
+df_tran[, 1] <- NULL 
+rownames(df_tran) <- year_names
+
+df_tran <- merge(df_tran, df_tran_hv_pstra, by="row.names", all=TRUE)
+
+# Set the year as rownames and delete from first colum
+year_names <- df_tran[, 1]
+df_tran[, 1] <- NULL 
+rownames(df_tran) <- year_names
+
+df_tran <- merge(df_tran, df_ttr00005, by="row.names", all=TRUE)
+
+# Set the year as rownames and delete from first colum
+year_names <- df_tran[, 1]
+df_tran[, 1] <- NULL 
+rownames(df_tran) <- year_names
+
+df_tran <- merge(df_tran, df_ttr00009, by="row.names", all=TRUE)
+
+# Set the year as rownames and delete from first colum
+year_names <- df_tran[, 1]
+df_tran[, 1] <- NULL 
+rownames(df_tran) <- year_names
+
+df_tran <- merge(df_tran, df_ttr00011, by="row.names", all=TRUE)
+
+# Set the year as rownames and delete from first colum
+year_names <- df_tran[, 1]
+df_tran[, 1] <- NULL 
+rownames(df_tran) <- year_names
+
+df_tran <- merge(df_tran, df_ttr00012, by="row.names", all=TRUE)
+
+# Set the year as rownames and delete from first colum
+year_names <- df_tran[, 1]
+df_tran[, 1] <- NULL 
+rownames(df_tran) <- year_names
+```
+## Drivers - Energy
+
+### Primary energy consumption (sdg_07_10)
+```{r}
+# Keep data regarding all 28 countries in Europe
+to_keep <- c("EU28")
+name_df <- "sdg_07_10_"
+# Read data set
+library(data.table)
+df = fread("Data/Eurostat/Energy/sdg_07_10.tsv.gz", header = TRUE, sep2 = c(",","\t","|",";",":",""))
+
+# Assign as rows name the content of the first column 
+var_names <- t(df[, 1])
+df[, 1] <- NULL 
+rownames(df) <- var_names
+
+# Only keep data of all the 28 European country, use data aggregation calculated from Eurostat
+mask <- rownames(df) %like% to_keep
+df <- df[mask, ]
+
+# Transpose column and rows, we want year in the row and variables in the columns
+# Keep name of the columns, which are the year that will be set as row
+year_names <- colnames(df)
+df <- data.frame(t(df))
+
+# EXTRA FOR THIS DATASET
+# Eliminate character e, which stand for estimated. We trust Eurostat!
+df <- data.frame(sapply(df, function(x) gsub("e", "",  x)))
+df <- data.frame(sapply(df, function(x) gsub("b", "",  x)))
+df <- data.frame(sapply(df, function(x) gsub("p", "",  x)))
+
+#Change from character to numeric
+df <- data.frame(sapply(df, as.numeric))
+
+# Set correct name to the variable (column) in consideration and add the name of the dataset used
+var_names <- var_names[, mask]
+colnames(df) <- paste(name_df, var_names)
+rownames(df) <- year_names
+
+df_sdg_07_10 <- df
+```
+
+### Final energy consumption in households (t2020_rk200)	
+```{r}
+# Keep data regarding all 28 countries in Europe
+to_keep <- c("EU28")
+name_df <- "t2020_rk200_"
+# Read data set
+library(data.table)
+df = fread("Data/Eurostat/Energy/t2020_rk200.tsv.gz", header = TRUE, sep2 = c(",","\t","|",";",":",""))
+
+
+# Assign as rows name the content of the first column 
+var_names <- t(df[, 1])
+df[, 1] <- NULL 
+rownames(df) <- var_names
+
+
+# Only keep data of all the 28 European country, use data aggregation calculated from Eurostat
+mask <- rownames(df) %like% to_keep
+df <- df[mask, ]
+
+# Transpose column and rows, we want year in the row and variables in the columns
+# Keep name of the columns, which are the year that will be set as row
+year_names <- colnames(df)
+df <- data.frame(t(df))
+
+#Change from character to numeric
+df <- data.frame(sapply(df, as.numeric))
+
+# Set correct name to the variable (column) in consideration and add the name of the dataset used
+var_names <- var_names[, mask]
+colnames(df) <- paste(name_df, var_names)
+rownames(df) <- year_names
+
+df_t2020_rk200 <- df
+```
+### Final energy consumption by product (ten00123)
+```{r}
+# Keep data regarding all 28 countries in Europe
+to_keep <- c("EU28")
+name_df <- "ten00123_"
+# Read data set
+library(data.table)
+df = fread("Data/Eurostat/Energy/ten00123.tsv.gz", header = TRUE, sep2 = c(",","\t","|",";",":",""))
+
+# Assign as rows name the content of the first column 
+var_names <- t(df[, 1])
+df[, 1] <- NULL 
+rownames(df) <- var_names
+
+# Only keep data of all the 28 European country, use data aggregation calculated from Eurostat
+mask <- rownames(df) %like% to_keep
+df <- df[mask, ]
+
+# Transpose column and rows, we want year in the row and variables in the columns
+# FOR THE FUNCTION df <- data.frame(t(df))
+# Keep name of the columns, which are the year that will be set as row
+year_names <- colnames(df)
+df <- t(df) 
+
+# EXTRA FOR THIS DATASET
+# Eliminate character e, which stand for estimated. We trust Eurostat!
+df <- data.frame(sub("e", "", df, fixed = TRUE))
+df <- data.frame(sapply(df, as.numeric))
+
+# Set correct name to the variable (column) in consideration and add the name of the dataset used
+var_names <- var_names[, mask]
+colnames(df) <- paste(name_df, var_names)
+rownames(df) <- year_names
+
+df_ten00123 <- df
+```
+
+### Merge all transportation data into one dataframe
+```{r}
+df_energy <- merge(df_sdg_07_10, df_t2020_rk200, by="row.names", all=TRUE)
+
+# Set the year as rownames and delete from first colum
+year_names <- df_energy[, 1]
+df_energy[, 1] <- NULL 
+rownames(df_energy) <- year_names
+
+df_energy <- merge(df_energy, df_ten00123, by="row.names", all=TRUE)
+
+# Set the year as rownames and delete from first colum
+year_names <- df_energy[, 1]
+df_energy[, 1] <- NULL 
+rownames(df_energy) <- year_names
+```
+
+## Drivers - Waste
+
+### Municipal waste by waste management operations (env_wasmun)
+```{r}
+# Keep data regarding all 28 countries in Europe
+to_keep <- c("EU28", "KG_HAB")
+name_df <- "env_wasmun_"
+# Read data set
+library(data.table)
+df = fread("data/Eurostat/Waste/env_wasmun.tsv.gz", header = TRUE, sep2 = c(",","\t","|",";",":",""))
+
+
+# Assign as rows name the content of the first column 
+var_names <- t(df[, 1])
+df[, 1] <- NULL 
+rownames(df) <- var_names
+
+
+# Only keep data of all the 28 European country, use data aggregation calculated from Eurostat
+mask <- rownames(df) %like% "EU28"
+df <- df[mask, ]
+
+# Keep name of the columns, which are the year that will be set as row
+year_names <- colnames(df)
+
+# Transpose column and rows, we want year in the row and variables in the columns
+df <- data.frame(t(df))
+
+# EXTRA FOR THIS DATASET
+# Eliminate character s
+df <- data.frame(sapply(df, function(x) gsub("s", "",  x)))
+
+#Change from character to numeric
+df <- data.frame(sapply(df, as.numeric))
+
+# Set correct name to the variable (column) in consideration and add the name of the dataset used
+var_names <- var_names[, mask]
+colnames(df) <- paste(name_df, var_names)
+rownames(df) <- year_names
+
+# Only keep data that has kg per habitants as unit of measure (remove tonne and thousand of tonne --> same info)
+mask <- colnames(df) %like% "KG"
+df <- df[, mask]
+
+df_waste <- df
+```
+## Drivers Industrial process
+
+### Production in industry - annual data (sts_inpr_a)	
+```{r}
+# Keep data regarding all 28 countries in Europe
+to_keep <- c("EU28")
+name_df_sts_inpr_a <- "sts_inpr_a_"
+# Read data set
+library(data.table)
+df_sts_inpr_a = fread("data/Eurostat/Industrial/sts_inpr_a.tsv.gz", header = TRUE, sep2 = c(",","\t","|",";",":",""))
+
+
+# Assign as rows name the content of the first column 
+var_names <- t(df_sts_inpr_a[, 1])
+df_sts_inpr_a[, 1] <- NULL 
+rownames(df_sts_inpr_a) <- var_names
+
+
+# Only keep data of all the 28 European country, use data aggregation calculated from Eurostat
+mask <- rownames(df_sts_inpr_a) %like% to_keep
+df_sts_inpr_a <- df_sts_inpr_a[mask, ]
+
+# Transpose column and rows, we want year in the row and variables in the columns
+# Keep name of the columns, which are the year that will be set as row
+year_names <- colnames(df_sts_inpr_a)
+df_sts_inpr_a <- data.frame(t(df_sts_inpr_a))
+
+# Eliminate character s, which stand for estimated. We trust Eurostat!
+df_sts_inpr_a <- data.frame(sapply(df_sts_inpr_a, function(X) gsub("s", "",  X)))
+
+#Change from character to numeric
+df_sts_inpr_a <- data.frame(sapply(df_sts_inpr_a, as.numeric))
+
+# Set correct name to the variable (column) in consideration and add the name of the dataset used
+var_names <- var_names[, mask]
+colnames(df_sts_inpr_a) <- paste(name_df_sts_inpr_a, var_names)
+rownames(df_sts_inpr_a) <- year_names
+
+# Only keep interesting production data - intermediate goods, capital goods, consumer goods, manufacturing, manufacturing of food products, mining and quaring, and Electricity, gas, steam and air conditioning supply
+# Only keep index data (I10) and calendar adjusted data (CA)
+to_keep <- c("sts_inpr_a_ PROD,MIG_ING,CA,I10,EU28", "sts_inpr_a_ PROD,MIG_CAG,CA,I10,EU28", 
+              "sts_inpr_a_ PROD,MIG_COG,CA,I10,EU28",  "sts_inpr_a_ PROD,C,CA,I10,EU28",
+              "sts_inpr_a_ PROD,C10,CA,I10,EU28", "sts_inpr_a_ PROD,B,CA,I10,EU28", "sts_inpr_a_ PROD,D,CA,I10,EU28")
+df_sts_inpr_a <- subset(df_sts_inpr_a, select = to_keep)
+```
+
+### Production in construction - annual data (sts_copr_a)	
+```{r}
+# Keep data regarding all 28 countries in Europe
+to_keep <- c("EU28")
+name_df_sts_copr_a <- "sts_copr_a_"
+# Read data set
+library(data.table)
+df_sts_copr_a = fread("data/Eurostat/Industrial/sts_copr_a.tsv.gz", header = TRUE, sep2 = c(",","\t","|",";",":",""))
+
+
+# Assign as rows name the content of the first column 
+var_names <- t(df_sts_copr_a[, 1])
+df_sts_copr_a[, 1] <- NULL 
+rownames(df_sts_copr_a) <- var_names
+
+# Only keep data of all the 28 European country, use data aggregation calculated from Eurostat
+mask <- rownames(df_sts_copr_a) %like% to_keep
+df_sts_copr_a <- df_sts_copr_a[mask, ]
+
+# Transpose column and rows, we want year in the row and variables in the columns
+# Keep name of the columns, which are the year that will be set as row
+year_names <- colnames(df_sts_copr_a)
+df_sts_copr_a <- data.frame(t(df_sts_copr_a))
+
+# Eliminate character s, which stand for estimated. We trust Eurostat!
+df_sts_copr_a <- data.frame(sapply(df_sts_copr_a, function(X) gsub("s", "",  X)))
+
+#Change from character to numeric
+df_sts_copr_a <- data.frame(sapply(df_sts_copr_a, as.numeric))
+
+# Set correct name to the variable (column) in consideration and add the name of the dataset used
+var_names <- var_names[, mask]
+colnames(df_sts_copr_a) <- paste(name_df_sts_copr_a, var_names)
+rownames(df_sts_copr_a) <- year_names
+
+# Only keep data expressed as index of 2010 (I10)
+mask <- colnames(df_sts_copr_a) %like% "I10"
+df_sts_copr_a <- df_sts_copr_a[, mask]
+```
+
+### Merge all industrial process data into one dataset
+```{r}
+df_industrial <- merge(df_sts_copr_a, df_sts_inpr_a, by="row.names", all=TRUE)
+
+# Set the year as rownames and delete from first colum
+year_names <- df_industrial[, 1]
+df_industrial[, 1] <- NULL 
+rownames(df_industrial) <- year_names
+```
+
+## Merge all possible drivers
+```{r}
+# Include transport and energy data
+df_climate <- merge(df_tran, df_energy, by="row.names", all=TRUE)
+
+# Set the year as rownames and delete from first colum
+year_names <- df_climate[, 1]
+df_climate[, 1] <- NULL 
+rownames(df_climate) <- year_names
+
+# Include greenhouse gas emissions data
+df_climate <- merge(df_gas, df_climate, by="row.names", all=TRUE)
+
+# Set the year as rownames and delete from first colum
+year_names <- df_climate[, 1]
+df_climate[, 1] <- NULL 
+rownames(df_climate) <- year_names
+
+# Include waste data
+df_climate <- merge(df_waste, df_climate, by="row.names", all=TRUE)
+
+# Set the year as rownames and delete from first colum
+year_names <- df_climate[, 1]
+df_climate[, 1] <- NULL 
+rownames(df_climate) <- year_names
+
+# Include industrial data
+df_climate <- merge(df_industrial, df_climate, by="row.names", all=TRUE)
+
+# Set the year as rownames and delete from first colum
+year_names <- df_climate[, 1]
+df_climate[, 1] <- NULL 
+rownames(df_climate) <- year_names
+ 
+# Substitute , with _ in the columns names otherwise errors show up
+col <- colnames(df_climate)
+col <- gsub(",", "_", col)
+col <- gsub(" ", "", col)
+colnames(df_climate) <- col
+```
+
+## Save data
+```{r}
+write.csv(df_climate, "data/Eurostat/df_climate_raw.csv", row.names = TRUE)
+```

@@ -1,0 +1,342 @@
+---
+title: "Climate change evidence"
+output:
+  pdf_document: 
+    toc: true
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+# Set libraries
+library(readxl)
+library(ggplot2)
+library(gdata)
+library(tidyverse)
+library(esquisse)
+library(knitr)
+library(zoo)
+library(psych)
+
+# Define global variables
+my_theme <- theme_classic() + 
+            theme(text = element_text(family = "serif"),
+                  plot.title = element_text(size = 20, face = "bold"),
+                                            #margin = margin(t = 6, r = 0, b = 4, l = 0, unit = "pt")),
+                  plot.subtitle = element_text(size = 14),
+                  plot.caption = element_text(hjust = 0),
+                  axis.title.y = element_text(size = 11, hjust = 1),
+                  axis.title.x = element_text(size = 11, hjust = 0),
+                  legend.position = "bottom"
+                ) 
+
+# Option to see esquisse
+options("esquisse.display.mode" = "dialog")
+```
+
+# Data processing
+
+## NASA/GISS data
+Analyze global land-ocean data. No need of pre-processing, data already clean.
+
+```{r}
+df_temp_anomaly <- read.csv("data/NASA/global_temperature_anomaly.csv", 
+                            sep = ",", header = TRUE, skip = 2)
+
+# Have a look at first 5 row of the dataset
+kable(head(df_temp_anomaly))
+```
+
+
+## Berkley Earth data 
+Have a look at different data per continent.
+
+### Analysis of one continent file
+
+Do the processing of one single file, i.e. data processing of one continent to have a better idea of what to do
+```{r}
+# Define columns data frame
+cols_month <- c("year", "month", "monthly_anomaly", 
+                "monthly_uncertainty", "annual_anomaly", 
+                "annual_uncertainty", "five_year_anomaly", 
+                "five_year_uncertainty", "ten_year_anomaly", 
+                "ten_year_uncertainty", "twenty_year_anomaly", "twenty_year_uncertainty")
+
+path <- "data/Berkley Earth/continent_monthly_avg_temp/europe-TAVG-Trend.txt"
+
+# Read data
+df_europe_month <- read_delim(path,
+                        delim = " ",
+                        col_names = cols_month,
+                        # Specify all columns as character otherwise error show up
+                        col_types = "cccccccccccc",
+                        skip = 70, 
+                        na = c("", "NA","NaN"))
+  
+# Only keep first 4 columns
+df_europe_month <- df_europe_month[, 1:4]
+
+# Convert all columns to numeric 
+df_europe_month <- data.frame(sapply(df_europe_month, as.numeric))
+
+# Get name of zone from the path name
+zone_name_path <- unlist(strsplit(path, split = "/"))[4]
+
+# Get name of the zone as a list
+zone_name <- head(unlist(strsplit(zone_name_path, split = "-")), -2)
+
+# Collapse name into a single string
+zone_name <- paste(zone_name, collapse = '_')
+
+# Add name of the zone as a column to the dataset
+df_europe_month$zone <- zone_name
+
+# Create a single date column
+df_europe_month$date = as.yearmon(paste(df_europe_month$year, df_europe_month$month), "%Y %m")
+
+# Delete column year and month
+df_europe_month <- subset(df_europe_month, select = -c(year,month))
+  
+dim(df_europe_month)
+str(df_europe_month)
+kable(head(df_europe_month))
+kable(summary(df_europe_month))
+```
+
+### Aggregate all data 
+
+Using a for loop, read all the files per single continent contained in the same folder and apply the necessary cleaning
+
+```{r}
+# Get a list with all the files inside the folder zone_monthly_average_temp
+files <- list.files(path="data/Berkley Earth/continent_monthly_avg_temp", 
+                    pattern="*.txt", 
+                    full.names=TRUE, 
+                    recursive=FALSE)
+
+# Create empty data frame with correct columns to store all the data
+df_continent_avg_temp <- data.frame(zone = character(),
+                                   year = character(),
+                                   anomaly = double(),
+                                   lowess = double(),
+                                   uncertainty = double(),
+                                   stringsAsFactors=FALSE)
+
+# Loop true all the files in the folder and read them
+for (file in files){
+  
+  # Read and create a temporary dataset
+  df_year_temp <- read_delim(file,
+                        delim = " ",
+                        col_names = cols_month,
+                        # Specify all columns as character otherwise error show up
+                        col_types = "cccccccccccc",
+                        skip = 70, 
+                        na = c("", "NA","NaN"))
+  
+  # Only keep first 4 columns
+  df_year_temp <- df_year_temp[, 1:4]
+  
+  # Convert all columns to numeric 
+  df_year_temp <- data.frame(sapply(df_year_temp, as.numeric))
+  
+  # CALCULATE AVERAGE PER YEAR GIVEN MONTHLY DATA
+
+  # Aggregate data per year and calculate mean
+  df_year_temp <- aggregate(monthly_anomaly~year, transform(df_year_temp, year = df_year_temp$year), mean)
+  
+  # Change name of the column 
+  colnames(df_year_temp)[2] <- "yearly_anomaly"
+
+  # Compute LOWESS smoother which uses locally-weighted polynomial regression
+  line_trend <- lowess(as.numeric(df_year_temp$year), df_year_temp$yearly_anomaly, f = 1/5)
+  
+  # Add lowess to year temp dataframe as new column
+  df_year_temp$lowess <- line_trend$y
+  
+  # GET ZONE NAME FOR PATH
+  
+  # Unlist path name
+  zone_name_path <- unlist(strsplit(file, split = "/"))[4]
+  
+  # Get name of the zone as a list
+  zone_name <- head(unlist(strsplit(zone_name_path, split = "-")), -2)
+  
+  # Collapse name into a single string
+  zone_name <- paste(zone_name, collapse = '_')
+  
+  # Add name of the zone as a column to the temporary dataset
+  df_year_temp$zone <- zone_name
+  
+  # Update dataset
+  df_continent_avg_temp <- rbind(df_continent_avg_temp, df_year_temp)
+}
+```
+
+# Descriptive Statistics
+
+## NASA/GISS
+
+```{r}
+# Get dimension of the database
+dim(df_temp_anomaly)
+
+# Get information about columns
+str(df_temp_anomaly)
+
+# Get summary information about columns
+kable(summary(df_temp_anomaly))
+
+# Get summary information about columns
+kable(summary(df_temp_anomaly))
+```
+
+## Berkley Earth
+
+```{r}
+dim(df_continent_avg_temp)
+kable(summary(df_continent_avg_temp))
+str(df_continent_avg_temp)
+kable(head(df_continent_avg_temp))
+kable(describe(df_continent_avg_temp)[1:7])
+kable(describe(df_continent_avg_temp)[7:13])
+```
+
+### Descriptitive statistics per continent
+
+Using describeBy() function of psych package.
+
+```{r}
+describeBy(df_continent_avg_temp, df_continent_avg_temp$zone)
+```
+
+Manual approach.
+
+```{r}
+# Name of continents
+continents <- c("africa", "europe", "asia", "oceania", 
+                "north_america", "south_america", "antarctica")
+
+# Create empty vectors
+min_year <- c()
+min_temp_anom <- c()
+max_temp_anom <- c()
+mean_temp_anom <- c()
+var_temp_anom <- c()
+
+# Loop through all the continents
+for (continent in continents){
+  
+  # Filter the continent
+  df_continent <- df_continent_avg_temp[df_continent_avg_temp$zone == continent, ]
+  
+  # Get descriptive statistics per continent
+  min_year <- c(min_year, min(df_continent$year))
+  min_temp_anom <- c(min_temp_anom, min(df_continent$yearly_anomaly))
+  max_temp_anom <- c(max_temp_anom, max(df_continent$yearly_anomaly))
+  mean_temp_anom <- c(mean_temp_anom, mean(df_continent$yearly_anomaly))
+  var_temp_anom <- c(var_temp_anom, var(df_continent$yearly_anomaly))
+}
+
+df_summary_continent <- data.frame(continents, min_year, min_temp_anom, 
+                                   max_temp_anom, mean_temp_anom, var_temp_anom)
+
+kable(df_summary_continent)
+```
+
+# Data Visualization
+
+## Global temperature
+
+```{r, echo=F, fig.width = 9, fig.height = 6}
+
+cols <- c("red", "black")
+
+
+
+ggplot(df_temp_anomaly, aes(x = Year)) +
+  # Add horizontal and vertical line
+  geom_hline(yintercept = 0, linetype="dashed", color = "grey") +
+  geom_vline(xintercept = 1951, linetype="dashed", color = "grey") +
+  geom_vline(xintercept = 1980, linetype="dashed", color = "grey") +
+  # Add global annual mean point connected by a line
+  geom_point(aes(y = No_Smoothing, colour = "No_Smoothing")) +
+  geom_line(aes(y = No_Smoothing, colour = "No_Smoothing"), size = 0.5) +
+  # Add five-year lowess smooth line
+  geom_line(aes(y = Lowess.5., colour = "Lowess"), size = 0.5) +
+  # Personalize legend
+  guides(color = guide_legend(title = "")) +
+  # Manual color 
+  scale_color_manual(values = cols, labels = c("Lowess Smoothing", "Annual Mean")) + 
+  # Add more ticks to x axis
+  scale_x_continuous(breaks = round(seq(min(df_temp_anomaly$Year), max(df_temp_anomaly$Year), by = 10), 1),
+                     expand = c(0.007, 0)) + 
+  annotate("text", x=1997, y=0.9, label= "Nineteen of the hottest years 
+have occurred since 2000", size = 2.5) +
+  # Add labels and text
+  labs(
+    x = "Year",
+    y = "Temperature anomaly w.r.t 1951-80 (°C)",
+    title = "Global Temperature",
+    subtitle = "Global land-ocean temperature index",
+    caption = "Data source: NASA's Goddard Institute for Space Studies (GISS)"
+  ) +
+  # Set theme
+  my_theme
+```
+
+## Temperature anomaly trend for each continent
+
+```{r, echo=F, fig.width = 9, fig.height = 6}
+# Kepp only year after 1880
+df_continent_avg_temp_graph <- df_continent_avg_temp[df_continent_avg_temp$year > 1879, ]
+
+ggplot(df_continent_avg_temp_graph ) +
+  aes(x = year, y = lowess, colour = zone) +
+  # Add horizontal and vertical line
+  geom_hline(yintercept = 0, linetype="dashed", color = "grey") +
+  geom_vline(xintercept = 1951, linetype="dashed", color = "grey") +
+  geom_vline(xintercept = 1980, linetype="dashed", color = "grey") +
+  # Plot line per continent
+  geom_line(size = 0.7) +
+  # Personalize legend
+  guides(color = guide_legend(title = "")) +
+  # Manual color 
+  scale_color_manual(values = c(africa = "#151414", antarctica = "#BD9A00", asia = "#31B425",
+                                europe = "#E90202", north_america = "#2C48E2", oceania = "#B280FC", 
+                                south_america = "#9EE4F6"),
+                     labels = c("Africa", "Antartica", "Asia", "Europe", "North America", "Oceania", "South America")) +
+  # Add more ticks to x axis
+  scale_x_continuous(breaks = round(seq(min(df_continent_avg_temp$year), 
+                                        max(df_continent_avg_temp$year), by = 10), 1),
+                     expand = c(0.007, 0)) + 
+  # Add axes limits
+  ylim(-1, 2) + 
+  annotate("text", x=1995, y=1.6, label= "Europe shows the highest yearly 
+average temperature anomaly", size = 2.5) +
+    annotate("text", x=1965, y=-0.8, label= "Temperature anomaly are relative
+to 1951-1980 average", size = 2.5) +
+  # Add labels and text
+  labs(
+    x = "Year",
+    y = "Temperature anomaly w.r.t 1951-80 (°C)",
+    title = "Continent temperature anomaly",
+    subtitle = "Global annual mean surface air temperature change",
+    caption = "Data source: Berkley Earth."
+  ) +
+  # Set theme
+  my_theme
+```
+
+## Temperature records months and regions
+
+```{r}
+# Order data by yearly anomaly
+df_top_year <- df_continent_avg_temp[order(-df_continent_avg_temp$yearly_anomaly), ]
+kable(head(df_top_year, 10))
+```
+
+```{r}
+df_eu <- df_continent_avg_temp[df_continent_avg_temp$zone == 'europe', ]
+write.csv(df_eu, "data/Berkley Earth/df_yearly_anomaly_EU.csv", row.names = TRUE)
+```
+
